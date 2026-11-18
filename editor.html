@@ -2,6 +2,11 @@
 <style>
 *{box-sizing:border-box}body{max-width:840px;margin:auto;padding:30px 18px 60px;background:#fffcf5;color:#450d1a;font:17px/1.5 system-ui}h1,h2{font-weight:500;line-height:1.15}a{color:inherit}section{margin-top:28px;border-top:1px solid #dbcbb5;padding-top:10px}label{display:block;margin:12px 0 5px}input,textarea,select,button{font:inherit;color:inherit;max-width:100%}input[type=url],textarea,select{width:100%;padding:9px;background:#fff;border:1px solid #cbb8ad}textarea{resize:vertical}button{background:#450d1a;color:white;border:0;padding:11px 18px;cursor:pointer;margin:8px 4px 8px 0}button:disabled{opacity:.5}img{display:block;width:min(100%,320px);margin:12px 0}.option{padding:5px 0 10px}.option select{width:auto}small{display:block}#status{min-height:24px}.review{background:#f8e9d3;padding:15px}
 </style><a href="/admin">← Результаты</a><h1>Редактор квиза</h1><form id="form" hidden><section><h2>Вопросы и ответы</h2><label for="questionNo">Выбрать вопрос</label><select id="questionNo"></select><label for="promptText">Формулировка вопроса</label><textarea id="promptText" rows="2" required></textarea><div id="options"></div></section>
+<section id="interpretations"><h2>Интерпретации результатов</h2>
+<label for="track">Направление</label><select id="track"></select>
+<label for="description">Что означает результат</label><textarea id="description" rows="5" maxlength="4000" required></textarea>
+<label for="task">Попробуй на практике</label><textarea id="task" rows="3" maxlength="4000" required></textarea>
+</section>
 <section><h2>QR-код для участников</h2><label for="target">Ссылка для перехода</label><input id="target" type="url" required><small>При изменении ссылки появится новый QR-код. Можно также загрузить готовый плакат с кодом для этой ссылки.</small><label for="upload">Загрузить изображение (PNG или JPEG, до 1 МБ)</label><input id="upload" type="file" accept="image/png,image/jpeg"><img id="poster" alt="Предпросмотр QR-кода"><a id="download" download="QR-CUFA.png">Скачать изображение</a></section>
 <section><button id="publish" type="submit">Опубликовать изменения</button><p>Изменения увидят участники, которые откроют квиз после публикации.</p></section></form><p id="status" role="status">Загрузка…</p>
 <script src="/admin/qr.js"></script><script>
@@ -22,6 +27,14 @@ function displayQuestion(){
   select.onchange=()=>config.questions[index][1][i][0]=select.value;link.append(select);
   section.append(label,link);el('options').append(section);
  })
+}
+function displayProfile(){
+ const text=config.interpretations[el('track').value];
+ el('description').value=text.description;el('task').value=text.task;
+}
+el('track').onchange=displayProfile;
+for(const field of ['description','task']){
+ el(field).oninput=()=>{config.interpretations[el('track').value][field]=el(field).value};
 }
 function validUrl(s){try{const u=new URL(s);return u.protocol==='https:'&&!u.username&&!u.password}catch{return false}}
 function makeQR(){
@@ -46,6 +59,12 @@ el('promptText').maxLength=700;el('promptText').oninput=()=>{config.questions[in
 el('form').onsubmit=async event=>{
  event.preventDefault();el('publish').disabled=true;
  try{
+ const incomplete=Object.entries(config.interpretations).find(([,v])=>!v.description.trim()||!v.task.trim());
+ if(incomplete){
+  el('track').value=incomplete[0];displayProfile();
+  const field=el(!incomplete[1].description.trim()?'description':'task');
+  field.focus();throw Error('Заполни текст для направления '+tracks[incomplete[0]]+'.');
+ }
  const bad=config.questions.findIndex(([p,o])=>!p.trim()||o.some(([,t])=>!t.trim())||(config.scheme!=="file28"&&new Set(o.map(([k])=>k)).size!==4));
  if(bad>=0){index=bad;el('questionNo').value=index;displayQuestion();throw Error('Заполни вопрос '+(bad+1)+' и четыре ответа. Проверь выбранные направления.')}
  const r=await fetch('/admin/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({edition,config})});
@@ -54,7 +73,10 @@ el('form').onsubmit=async event=>{
 };
 async function load(){
  const r=await fetch('/admin/config');if(!r.ok)throw Error('Не удалось открыть редактор.');
- ({config,edition,tracks}=await r.json());config.questions.forEach((q,i)=>el('questionNo').add(new Option('Вопрос '+(i+1),i)));
+ const data=await r.json();({config,edition,tracks}=data);
+ config.interpretations=data.interpretations;
+ Object.entries(tracks).forEach(([key,title])=>el('track').add(new Option(title,key)));
+ displayProfile();config.questions.forEach((q,i)=>el('questionNo').add(new Option('Вопрос '+(i+1),i)));
  el('target').value=config.url;setImage(config.qr);displayQuestion();el('form').hidden=false;message('');
 }
 load().catch(e=>message(e.message));
