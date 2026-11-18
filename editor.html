@@ -1,0 +1,61 @@
+<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Редактор квиза · CUFA</title>
+<style>
+*{box-sizing:border-box}body{max-width:840px;margin:auto;padding:30px 18px 60px;background:#fffcf5;color:#450d1a;font:17px/1.5 system-ui}h1,h2{font-weight:500;line-height:1.15}a{color:inherit}section{margin-top:28px;border-top:1px solid #dbcbb5;padding-top:10px}label{display:block;margin:12px 0 5px}input,textarea,select,button{font:inherit;color:inherit;max-width:100%}input[type=url],textarea,select{width:100%;padding:9px;background:#fff;border:1px solid #cbb8ad}textarea{resize:vertical}button{background:#450d1a;color:white;border:0;padding:11px 18px;cursor:pointer;margin:8px 4px 8px 0}button:disabled{opacity:.5}img{display:block;width:min(100%,320px);margin:12px 0}.option{padding:5px 0 10px}.option select{width:auto}small{display:block}#status{min-height:24px}.review{background:#f8e9d3;padding:15px}
+</style><a href="/admin">← Результаты</a><h1>Редактор квиза</h1><form id="form" hidden><section><h2>Вопросы и ответы</h2><label for="questionNo">Выбрать вопрос</label><select id="questionNo"></select><label for="promptText">Формулировка вопроса</label><textarea id="promptText" rows="2" required></textarea><div id="options"></div></section>
+<section><h2>QR-код для участников</h2><label for="target">Ссылка для перехода</label><input id="target" type="url" required><small>При изменении ссылки появится новый QR-код. Можно также загрузить готовый плакат с кодом для этой ссылки.</small><label for="upload">Загрузить изображение (PNG или JPEG, до 1 МБ)</label><input id="upload" type="file" accept="image/png,image/jpeg"><img id="poster" alt="Предпросмотр QR-кода"><a id="download" download="QR-CUFA.png">Скачать изображение</a></section>
+<section><button id="publish" type="submit">Опубликовать изменения</button><p>Изменения увидят участники, которые откроют квиз после публикации.</p></section></form><p id="status" role="status">Загрузка…</p>
+<script src="/admin/qr.js"></script><script>
+const el=id=>document.getElementById(id);
+let config,edition,tracks,index=0;
+const letters='АБВГ';
+function message(text){el('status').textContent=text}
+function setImage(src){config.qr=src;el('poster').src=src;el('download').href=src;el('download').download=src.startsWith('data:image/jpeg')?'QR-CUFA.jpg':'QR-CUFA.png'}
+function displayQuestion(){
+ const [prompt,opts]=config.questions[index];el('promptText').value=prompt;el('options').replaceChildren();
+ opts.forEach(([id,text],i)=>{
+  const section=document.createElement('div');section.className='option';
+  const label=document.createElement('label'),area=document.createElement('textarea');
+  label.textContent='Ответ '+letters[i];area.value=text;area.rows=2;area.required=true;area.maxLength=700;
+  area.oninput=()=>config.questions[index][1][i][1]=area.value;label.append(area);
+  const link=document.createElement('label'), select=document.createElement('select');link.textContent='Направление ';
+  Object.entries(tracks).forEach(([k,v])=>select.add(new Option(v,k)));select.value=id;
+  select.onchange=()=>config.questions[index][1][i][0]=select.value;link.append(select);
+  section.append(label,link);el('options').append(section);
+ })
+}
+function validUrl(s){try{const u=new URL(s);return u.protocol==='https:'&&!u.username&&!u.password}catch{return false}}
+function makeQR(){
+ const target=el('target').value.trim();if(!validUrl(target)){el('target').setCustomValidity('Укажи полную HTTPS-ссылку');return false}
+ try{const code=qrcode(0,'M');code.addData(new URL(target).href);code.make();
+ const n=code.getModuleCount(),unit=10,canvas=document.createElement('canvas');canvas.width=canvas.height=(n+8)*unit;
+ const ctx=canvas.getContext('2d');ctx.fillStyle='#ffe0ad';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#450d1a';
+ for(let r=0;r<n;r++)for(let c=0;c<n;c++)if(code.isDark(r,c))ctx.fillRect((c+4)*unit,(r+4)*unit,unit,unit);
+ config.url=target;setImage(canvas.toDataURL('image/png'));el('upload').value='';return true;
+ }catch{el('target').setCustomValidity('Ссылка слишком длинная для QR-кода');return false}
+}
+el('target').oninput=()=>{el('target').setCustomValidity('');makeQR()};
+el('upload').onchange=async()=>{
+ const file=el('upload').files[0];if(!file)return;
+ if(!['image/png','image/jpeg'].includes(file.type)||file.size>1000000){message('Выбери PNG или JPEG размером до 1 МБ.');return}
+ el('publish').disabled=true;
+ try{const reader=new FileReader();const data=await new Promise((ok,fail)=>{reader.onload=()=>ok(reader.result);reader.onerror=fail;reader.readAsDataURL(file)});
+ const img=new Image();img.src=data;await img.decode();setImage(data);message('Предпросмотр обновлён.')}catch{message('Не удалось прочитать изображение.')}finally{el('publish').disabled=false}
+};
+el('questionNo').onchange=()=>{index=+el('questionNo').value;displayQuestion()};
+el('promptText').maxLength=700;el('promptText').oninput=()=>{config.questions[index][0]=el('promptText').value};
+el('form').onsubmit=async event=>{
+ event.preventDefault();el('publish').disabled=true;
+ try{
+ const bad=config.questions.findIndex(([p,o])=>!p.trim()||o.some(([,t])=>!t.trim())||new Set(o.map(([k])=>k)).size!==4);
+ if(bad>=0){index=bad;el('questionNo').value=index;displayQuestion();throw Error('Заполни вопрос '+(bad+1)+' и четыре ответа. У каждого ответа должно быть своё направление.')}
+ const r=await fetch('/admin/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({edition,config})});
+ if(!r.ok)throw Error(await r.text());edition=(await r.json()).edition;message('Изменения опубликованы. Версия '+edition+'.');
+ }catch(e){message(e.message)}finally{el('publish').disabled=false}
+};
+async function load(){
+ const r=await fetch('/admin/config');if(!r.ok)throw Error('Не удалось открыть редактор.');
+ ({config,edition,tracks}=await r.json());config.questions.forEach((q,i)=>el('questionNo').add(new Option('Вопрос '+(i+1),i)));
+ el('target').value=config.url;setImage(config.qr);displayQuestion();el('form').hidden=false;message('');
+}
+load().catch(e=>message(e.message));
+</script></html>
