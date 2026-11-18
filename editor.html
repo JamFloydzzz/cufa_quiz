@@ -5,7 +5,7 @@
 <section id="interpretations"><h2>Интерпретации результатов</h2>
 <label for="track">Направление</label><select id="track"></select>
 <label for="description">Что означает результат</label><textarea id="description" rows="5" maxlength="4000" required></textarea>
-<label for="task">Попробуй на практике</label><textarea id="task" rows="3" maxlength="4000" required></textarea>
+
 </section>
 <section><h2>QR-код для участников</h2><label for="target">Ссылка для перехода</label><input id="target" type="url" required><small>При изменении ссылки появится новый QR-код. Можно также загрузить готовый плакат с кодом для этой ссылки.</small><label for="upload">Загрузить изображение (PNG или JPEG, до 1 МБ)</label><input id="upload" type="file" accept="image/png,image/jpeg"><img id="poster" alt="Предпросмотр QR-кода"><a id="download" download="QR-CUFA.png">Скачать изображение</a></section>
 <section><button id="publish" type="submit">Опубликовать изменения</button><p>Изменения увидят участники, которые откроют квиз после публикации.</p></section></form><p id="status" role="status">Загрузка…</p>
@@ -30,10 +30,10 @@ function displayQuestion(){
 }
 function displayProfile(){
  const text=config.interpretations[el('track').value];
- el('description').value=text.description;el('task').value=text.task;
+ el('description').value=text.description;
 }
 el('track').onchange=displayProfile;
-for(const field of ['description','task']){
+for(const field of ['description']){
  el(field).oninput=()=>{config.interpretations[el('track').value][field]=el(field).value};
 }
 function validUrl(s){try{const u=new URL(s);return u.protocol==='https:'&&!u.username&&!u.password}catch{return false}}
@@ -59,10 +59,10 @@ el('promptText').maxLength=700;el('promptText').oninput=()=>{config.questions[in
 el('form').onsubmit=async event=>{
  event.preventDefault();el('publish').disabled=true;
  try{
- const incomplete=Object.entries(config.interpretations).find(([,v])=>!v.description.trim()||!v.task.trim());
+ const incomplete=Object.entries(config.interpretations).find(([,v])=>!v.description.trim());
  if(incomplete){
   el('track').value=incomplete[0];displayProfile();
-  const field=el(!incomplete[1].description.trim()?'description':'task');
+  const field=el('description');
   field.focus();throw Error('Заполни текст для направления '+tracks[incomplete[0]]+'.');
  }
  const bad=config.questions.findIndex(([p,o])=>!p.trim()||o.some(([,t])=>!t.trim())||(config.scheme!=="file28"&&new Set(o.map(([k])=>k)).size!==4));

@@ -34,7 +34,7 @@ function checkConfig(config){
   try{const url=new URL(config.url);if(url.protocol!=='https:'||url.username||url.password)return false}catch{return false}
   if(typeof config.qr!=='string'||config.qr.length>1340000||!/^data:image\/(?:png;base64,iVBORw0KGgo|jpeg;base64,\/9j\/)[a-zA-Z0-9+/]*={0,2}$/.test(config.qr))return false;
   const text=s=>typeof s==='string'&&s.trim().length>0&&s.length<=700;
-  return Array.isArray(config.questions)&&config.questions.length===30&&config.questions.every(q=>
+  return Array.isArray(config.questions)&&[20,30].includes(config.questions.length)&&config.questions.every(q=>
     Array.isArray(q)&&q.length===2&&text(q[0])&&Array.isArray(q[1])&&q[1].length===4&&
     q[1].every(o=>Array.isArray(o)&&o.length===2&&Object.hasOwn(tracksFor(config),o[0])&&text(o[1]))&&(config.scheme==="file28"||new Set(q[1].map(o=>o[0])).size===4));
 }
