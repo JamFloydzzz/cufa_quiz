@@ -10,6 +10,8 @@ async function getEdition(db, version){
   if(row)return {edition:row.edition,config:JSON.parse(row.config)};
   return version===undefined?{edition:1,config:defaults}:null;
 }
+const fileTracks={"M&A": "M&A", "Research": "Research", "AM": "Asset Management", "VC": "Venture Capital", "PE": "Private Equity", "Quant": "Quant", "Trading": "Trading", "FP&A": "FP&A", "CorpDev": "Corporate Development", "Strategy": "Strategic Consulting", "ECM/DCM": "ECM/DCM"};
+function tracksFor(config){return config?.scheme==="file28"?fileTracks:tracks}
 function checkConfig(config){
   if(!config||typeof config.url!=='string'||config.url.length>2048)return false;
   try{const url=new URL(config.url);if(url.protocol!=='https:'||url.username||url.password)return false}catch{return false}
@@ -17,7 +19,7 @@ function checkConfig(config){
   const text=s=>typeof s==='string'&&s.trim().length>0&&s.length<=700;
   return Array.isArray(config.questions)&&config.questions.length===30&&config.questions.every(q=>
     Array.isArray(q)&&q.length===2&&text(q[0])&&Array.isArray(q[1])&&q[1].length===4&&
-    q[1].every(o=>Array.isArray(o)&&o.length===2&&Object.hasOwn(tracks,o[0])&&text(o[1]))&&new Set(q[1].map(o=>o[0])).size===4);
+    q[1].every(o=>Array.isArray(o)&&o.length===2&&Object.hasOwn(tracksFor(config),o[0])&&text(o[1]))&&(config.scheme==="file28"||new Set(q[1].map(o=>o[0])).size===4));
 }
 async function publish(req,db){
   if(req.headers.get('Origin')!==new URL(req.url).origin||!req.headers.get('Content-Type')?.startsWith('application/json'))return reply('',403);
@@ -47,10 +49,12 @@ async function submit(req,db){
   choices.forEach((a,i)=>{if(a!==null){const track=mapping[i][a];scores[track]=(scores[track]||0)+1}});
   const appearances={};
   choices.forEach((a,i)=>{if(a!==null) mapping[i].forEach(k=>appearances[k]=(appearances[k]||0)+1)});
-  const fraction=id=>edition?scores[id]/appearances[id]:scores[id];
+  const names=tracksFor(snapshot?.config);
+  const weighted=edition && snapshot.config.scheme!=="file28";
+  const fraction=id=>weighted?scores[id]/appearances[id]:scores[id];
   const max=Math.max(...Object.keys(scores).map(fraction));
-  const leaders=Object.keys(scores).filter(id=>max-fraction(id)<=(edition?0.101:0)).sort((a,b)=>fraction(b)-fraction(a)).map(k=>edition?tracks[k]:k);
-  const display=Object.fromEntries(Object.entries(scores).map(([k,v])=>edition?[tracks[k],v+'/'+appearances[k]]:[k,v]));
+  const leaders=Object.keys(scores).filter(id=>max-fraction(id)<=(weighted?0.101:0)).sort((a,b)=>fraction(b)-fraction(a)).map(k=>edition?names[k]:k);
+  const display=Object.fromEntries(Object.entries(scores).map(([k,v])=>edition?[names[k],weighted?v+'/'+appearances[k]:v]:[k,v]));
   await db.prepare(`INSERT INTO quiz_results(attempt,revision,answered,choices,scores,leaders,edition) VALUES(?,?,?,?,?,?,?)
     ON CONFLICT(attempt) DO UPDATE SET revision=excluded.revision,answered=excluded.answered,choices=excluded.choices,
     scores=excluded.scores,leaders=excluded.leaders,updated_at=CURRENT_TIMESTAMP WHERE excluded.revision>quiz_results.revision AND excluded.edition=quiz_results.edition`)
@@ -75,7 +79,7 @@ export default {async fetch(req,env){
       if(url.pathname==='/admin')return report(url,req,env);
       if(url.pathname==='/admin/edit')return reply(editor,200,'text/html; charset=utf-8');
       if(url.pathname==='/admin/qr.js')return reply(qrLibrary,200,'application/javascript; charset=utf-8');
-      if(url.pathname==='/admin/config')return reply(JSON.stringify({...await getEdition(env.DB),tracks}),200,'application/json');
+      if(url.pathname==='/admin/config'){const active=await getEdition(env.DB);return reply(JSON.stringify({...active,tracks:tracksFor(active.config)}),200,'application/json')}
     }
     if(req.method==='POST'&&url.pathname==='/admin/config')return publish(req,env.DB);
   }

@@ -46,8 +46,8 @@ el('promptText').maxLength=700;el('promptText').oninput=()=>{config.questions[in
 el('form').onsubmit=async event=>{
  event.preventDefault();el('publish').disabled=true;
  try{
- const bad=config.questions.findIndex(([p,o])=>!p.trim()||o.some(([,t])=>!t.trim())||new Set(o.map(([k])=>k)).size!==4);
- if(bad>=0){index=bad;el('questionNo').value=index;displayQuestion();throw Error('Заполни вопрос '+(bad+1)+' и четыре ответа. У каждого ответа должно быть своё направление.')}
+ const bad=config.questions.findIndex(([p,o])=>!p.trim()||o.some(([,t])=>!t.trim())||(config.scheme!=="file28"&&new Set(o.map(([k])=>k)).size!==4));
+ if(bad>=0){index=bad;el('questionNo').value=index;displayQuestion();throw Error('Заполни вопрос '+(bad+1)+' и четыре ответа. Проверь выбранные направления.')}
  const r=await fetch('/admin/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({edition,config})});
  if(!r.ok)throw Error(await r.text());edition=(await r.json()).edition;message('Изменения опубликованы. Версия '+edition+'.');
  }catch(e){message(e.message)}finally{el('publish').disabled=false}
